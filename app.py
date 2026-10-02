@@ -1,14 +1,18 @@
 import streamlit as st
 from datetime import datetime
 import base64
+from streamlit_autorefresh import st_autorefresh
 
-# --- PAGE CONFIG ---
+# --- PAGE SETUP ---
 st.set_page_config(
     page_title="ChatSpace // Ghost",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
+
+# Har 3 second mein screen auto-sync hogi bina page reload kiye
+st_autorefresh(interval=3000, key="chat_syncer")
 
 # --- CLEAN MODERN CSS ---
 st.markdown("""
@@ -22,13 +26,12 @@ st.markdown("""
 }
 [data-testid="stSidebar"] {
     background: rgba(15, 23, 42, 0.95) !important;
-    backdrop-filter: blur(20px);
 }
 .chat-bubble {
-    padding: 12px 16px;
-    border-radius: 16px;
-    margin-bottom: 10px;
-    max-width: 82%;
+    padding: 10px 14px;
+    border-radius: 14px;
+    margin-bottom: 8px;
+    max-width: 80%;
     word-break: break-word;
 }
 .my-msg {
@@ -42,7 +45,7 @@ st.markdown("""
     color: #f1f5f9;
     margin-right: auto;
     border-bottom-left-radius: 2px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.1);
 }
 .bubble-meta {
     font-size: 0.72rem;
@@ -50,17 +53,13 @@ st.markdown("""
     display: flex;
     justify-content: space-between;
     gap: 12px;
-    margin-bottom: 4px;
+    margin-bottom: 3px;
     opacity: 0.85;
-}
-.bubble-body {
-    font-size: 0.95rem;
-    line-height: 1.4;
 }
 </style>
 """, unsafe_allow_html=True)
 
-# --- GLOBAL STORE ---
+# --- GLOBAL STORE (SABHI DEVICES KO EK SATH CONNECT KARTA HAI) ---
 @st.cache_resource
 def get_global_store():
     return {}
@@ -76,56 +75,61 @@ STICKERS = [
     {"name": "👀 Shock", "url": "https://media.giphy.com/media/5VKbvrjxpVJCM/giphy.gif"},
 ]
 
-# --- SIDEBAR ---
+# --- SIDEBAR CONFIG ---
 with st.sidebar:
     st.markdown("### ⚡ **ChatSpace Ultra**")
     st.caption("🔒 End-to-End Ghost Chat")
     st.divider()
 
-    username = st.text_input("👤 Your Alias", placeholder="e.g. Alex", max_chars=18)
-    room_id = st.text_input("🔑 Room Key", placeholder="e.g. VIP-777", type="password")
+    username = st.text_input("👤 Your Alias (Name)", placeholder="e.g. Alex", max_chars=18)
+    room_id = st.text_input("🔑 Room Key (Secret PIN)", placeholder="e.g. 1234", type="password")
 
     if room_id:
         if room_id not in chat_rooms:
             chat_rooms[room_id] = []
         user_count = len({m["user"] for m in chat_rooms[room_id]})
-        st.metric(label="Active in Room", value=max(user_count, 1))
+        st.metric(label="👥 Active in Room", value=max(user_count, 1))
 
     if st.button("🗑️ Clear Room Chat", use_container_width=True):
         if room_id in chat_rooms:
             chat_rooms[room_id] = []
             st.rerun()
 
-# --- MAIN UI ---
+# --- MAIN SCREEN LOGIC ---
 if not username or not room_id:
-    st.info("👈 Upar left arrow (`>>`) daba kar apna **Alias** aur **Room Key** enter kijiye!")
+    st.info("👈 Upar left arrow (`>>`) daba kar apna **Alias (Name)** aur **Room Key** enter kijiye!")
 else:
     if room_id not in chat_rooms:
         chat_rooms[room_id] = []
 
     st.markdown(f"#### 🔒 Room: `{room_id}` | Connected as **{username}**")
 
-    # Render Chat List
+    # Chat render container
     chat_box = st.container()
     with chat_box:
         if not chat_rooms[room_id]:
-            st.caption("💬 Is room mein abhi koi message nahi hai. Hi bolo!")
+            st.caption("💬 Is room mein abhi koi message nahi hai. Hi bolo ya photo bhejo!")
         else:
             for msg in chat_rooms[room_id]:
                 is_me = (msg["user"] == username)
                 b_class = "my-msg" if is_me else "other-msg"
                 user_label = "You" if is_me else msg["user"]
 
-                # Single-line zero-indent HTML string to prevent markdown code block bug
                 if msg["type"] == "text":
-                    html = f'<div class="chat-bubble {b_class}"><div class="bubble-meta"><span>{user_label}</span><span>{msg["time"]}</span></div><div class="bubble-body">{msg["content"]}</div></div>'
-                    st.markdown(html, unsafe_allow_html=True)
+                    st.markdown(
+                        f'<div class="chat-bubble {b_class}"><div class="bubble-meta"><span>{user_label}</span><span>{msg["time"]}</span></div><div>{msg["content"]}</div></div>',
+                        unsafe_allow_html=True
+                    )
                 elif msg["type"] == "gif":
-                    html = f'<div class="chat-bubble {b_class}"><div class="bubble-meta"><span>{user_label}</span><span>{msg["time"]}</span></div><img src="{msg["content"]}" style="width:100%; border-radius:10px; margin-top:4px;" /></div>'
-                    st.markdown(html, unsafe_allow_html=True)
+                    st.markdown(
+                        f'<div class="chat-bubble {b_class}"><div class="bubble-meta"><span>{user_label}</span><span>{msg["time"]}</span></div><img src="{msg["content"]}" style="width:100%; border-radius:10px; margin-top:4px;" /></div>',
+                        unsafe_allow_html=True
+                    )
                 elif msg["type"] == "image":
-                    html = f'<div class="chat-bubble {b_class}"><div class="bubble-meta"><span>{user_label}</span><span>{msg["time"]}</span></div><img src="data:image/jpeg;base64,{msg["content"]}" style="width:100%; border-radius:10px; margin-top:4px;" /></div>'
-                    st.markdown(html, unsafe_allow_html=True)
+                    st.markdown(
+                        f'<div class="chat-bubble {b_class}"><div class="bubble-meta"><span>{user_label}</span><span>{msg["time"]}</span></div><img src="data:image/jpeg;base64,{msg["content"]}" style="width:100%; border-radius:10px; margin-top:4px;" /></div>',
+                        unsafe_allow_html=True
+                    )
 
     # --- PHOTO & GIF PANEL ---
     with st.expander("✨ Photo • Sticker • GIF"):
@@ -157,7 +161,7 @@ else:
                         })
                         st.rerun()
 
-    # --- INPUT FORM ---
+    # --- MESSAGE INPUT FORM ---
     with st.form("input_form", clear_on_submit=True):
         col1, col2 = st.columns([8, 2])
         with col1:
