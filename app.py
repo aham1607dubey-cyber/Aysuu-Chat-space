@@ -1,5 +1,7 @@
 import streamlit as st
 from datetime import datetime
+from streamlit_autorefresh import st_autorefresh
+
 
 # =========================================================
 # PAGE SETUP
@@ -12,8 +14,22 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+
 # =========================================================
-# MODERN STYLING
+# AUTOMATIC REFRESH
+# =========================================================
+
+# Chat automatically checks for new messages every 2 seconds.
+# User ko koi Sync button nahi chahiye.
+
+st_autorefresh(
+    interval=2000,
+    key="chat_auto_refresh"
+)
+
+
+# =========================================================
+# MODERN CSS
 # =========================================================
 
 st.markdown("""
@@ -32,11 +48,12 @@ st.markdown("""
             #0f172a 0%,
             #020617 100%
         );
+
     color: #f8fafc;
 }
 
 [data-testid="stSidebar"] {
-    background: rgba(15, 23, 42, 0.95) !important;
+    background: rgba(15, 23, 42, 0.96) !important;
 }
 
 .stButton > button {
@@ -49,46 +66,20 @@ st.markdown("""
 
 
 # =========================================================
-# CENTRAL MEMORY VAULT
+# SHARED CHAT STORE
 # =========================================================
-
-class CentralVault:
-
-    def __init__(self):
-        self.rooms = {}
-
-    def get_messages(self, room_id):
-
-        return self.rooms.get(room_id, [])
-
-    def add_message(self, room_id, message):
-
-        if room_id not in self.rooms:
-            self.rooms[room_id] = []
-
-        self.rooms[room_id].append(message)
-
-        # Maximum 100 messages per room
-        if len(self.rooms[room_id]) > 100:
-            self.rooms[room_id].pop(0)
-
-    def clear(self, room_id):
-
-        if room_id in self.rooms:
-            self.rooms[room_id] = []
-
 
 @st.cache_resource
-def get_vault():
+def get_chat_rooms():
 
-    return CentralVault()
+    return {}
 
 
-vault = get_vault()
+chat_rooms = get_chat_rooms()
 
 
 # =========================================================
-# STICKERS
+# STICKERS / GIFS
 # =========================================================
 
 STICKERS = [
@@ -139,53 +130,51 @@ with st.sidebar:
 
     st.divider()
 
-    input_user = st.text_input(
-        "👤 Your Alias",
-        placeholder="e.g. Alex",
-        max_chars=18
-    )
-
-    input_room = st.text_input(
-        "🔑 Room Key",
-        placeholder="e.g. secret77",
-        type="password"
-    )
-
-    username = input_user.strip()
-
-    room_id = input_room.strip().lower()
 
     # -----------------------------------------------------
-    # ROOM INFO
+    # USER NAME
+    # -----------------------------------------------------
+
+    username = st.text_input(
+        "👤 Your Alias",
+        placeholder="e.g. Aham",
+        max_chars=18
+    ).strip()
+
+
+    # -----------------------------------------------------
+    # ROOM KEY
+    # -----------------------------------------------------
+
+    room_id = st.text_input(
+        "🔑 Room Key",
+        placeholder="e.g. friends123",
+        type="password"
+    ).strip().lower()
+
+
+    # -----------------------------------------------------
+    # ROOM
     # -----------------------------------------------------
 
     if room_id:
 
-        if room_id not in vault.rooms:
+        if room_id not in chat_rooms:
 
-            vault.rooms[room_id] = []
+            chat_rooms[room_id] = []
 
         st.success(
-            f"Connected to Room: #{room_id}"
+            f"Room: #{room_id}"
         )
 
         st.metric(
             "💬 Messages",
-            len(vault.get_messages(room_id))
+            len(chat_rooms[room_id])
         )
+
 
     st.divider()
 
-    # -----------------------------------------------------
-    # MANUAL SYNC
-    # -----------------------------------------------------
-
-    if st.button(
-        "🔄 Sync Chat Now",
-        use_container_width=True
-    ):
-
-        st.rerun()
 
     # -----------------------------------------------------
     # CLEAR ROOM
@@ -196,70 +185,79 @@ with st.sidebar:
         use_container_width=True
     ):
 
-        if room_id:
+        if room_id in chat_rooms:
 
-            vault.clear(room_id)
+            chat_rooms[room_id] = []
 
             st.rerun()
 
 
 # =========================================================
-# LOGIN / ROOM SCREEN
+# LOGIN SCREEN
 # =========================================================
 
 if not username or not room_id:
 
     st.info(
-        "👈 Sidebar mein apna **Alias** aur **Room Key** daaliye!"
+        "👈 Sidebar mein apna Alias aur Room Key enter karo."
     )
 
     st.markdown("""
-    ### 🔐 ChatSpace Ultra
+    ### ⚡ ChatSpace Ultra
 
-    **How to use:**
+    👤 **Apna naam alag rakho**
 
-    1. Apna alias enter karo.
-    2. Dono log **same Room Key** enter karo.
-    3. Same room mein chat karo.
-    4. Naya message dekhne ke liye **Sync Chat Now** dabao.
+    🔑 **Dono log same Room Key use karo**
 
-    💬 Maximum 100 messages per room.
+    💬 **Messages automatically refresh honge**
+
+    📷 **Photos supported**
+
+    🎭 **GIFs & Stickers supported**
+
+    💬 **Maximum 500 messages**
     """)
 
     st.stop()
 
 
 # =========================================================
-# MAIN CHAT HEADER
+# CREATE ROOM IF NEEDED
+# =========================================================
+
+if room_id not in chat_rooms:
+
+    chat_rooms[room_id] = []
+
+
+messages = chat_rooms[room_id]
+
+
+# =========================================================
+# HEADER
 # =========================================================
 
 st.markdown(
-    f"#### 🔒 Private Vault: `#{room_id}`"
+    f"#### 🔒 Private Room: `#{room_id}`"
 )
 
 st.caption(
-    f"Connected as **{username}**"
+    f"Connected as **{username}** • "
+    f"{len(messages)}/500 messages"
 )
 
 st.divider()
 
 
 # =========================================================
-# GET MESSAGES
-# =========================================================
-
-messages = vault.get_messages(room_id)
-
-
-# =========================================================
-# CHAT DISPLAY
+# DISPLAY CHAT
 # =========================================================
 
 if not messages:
 
     st.info(
-        "💬 Is room mein abhi koi message nahi hai. "
-        "Hi bolo ya photo bhejo!"
+        "💬 No messages yet. "
+        "Start the conversation!"
     )
 
 else:
@@ -270,9 +268,18 @@ else:
             msg["user"] == username
         )
 
-        avatar = "👤" if is_me else "💬"
+        avatar = (
+            "👤"
+            if is_me
+            else "💬"
+        )
 
-        role = "user" if is_me else "assistant"
+        role = (
+            "user"
+            if is_me
+            else "assistant"
+        )
+
 
         with st.chat_message(
             role,
@@ -280,10 +287,14 @@ else:
         ):
 
             st.markdown(
-                f"**{msg['user']}** • *{msg['time']}*"
+                f"**{msg['user']}** • "
+                f"*{msg['time']}*"
             )
 
-            # ---------------- TEXT ----------------
+
+            # -------------------------------------------------
+            # TEXT MESSAGE
+            # -------------------------------------------------
 
             if msg["type"] == "text":
 
@@ -291,16 +302,22 @@ else:
                     msg["content"]
                 )
 
-            # ---------------- GIF ----------------
+
+            # -------------------------------------------------
+            # GIF / STICKER
+            # -------------------------------------------------
 
             elif msg["type"] == "gif":
 
                 st.image(
                     msg["content"],
-                    width=200
+                    width=220
                 )
 
-            # ---------------- PHOTO ----------------
+
+            # -------------------------------------------------
+            # PHOTO
+            # -------------------------------------------------
 
             elif msg["type"] == "image":
 
@@ -311,99 +328,126 @@ else:
 
 
 # =========================================================
-# PHOTO + STICKERS
+# PHOTO + GIF PANEL
 # =========================================================
 
 with st.expander(
     "✨ Photo • Sticker • GIF"
 ):
 
-    tab1, tab2 = st.tabs(
+    tab_photo, tab_sticker = st.tabs(
         [
             "📷 Upload Photo",
-            "🎭 Stickers"
+            "🎭 GIFs & Stickers"
         ]
     )
 
+
     # =====================================================
-    # PHOTO
+    # PHOTO TAB
     # =====================================================
 
-    with tab1:
+    with tab_photo:
 
-        up_file = st.file_uploader(
-            "Select image",
+        uploaded = st.file_uploader(
+            "Select Photo",
             type=[
                 "png",
                 "jpg",
                 "jpeg",
                 "webp"
             ],
-            key="img_uploader"
+            key="photo_upload"
         )
 
-        if up_file is not None:
+
+        if uploaded:
 
             st.image(
-                up_file,
+                uploaded,
                 width=300
             )
+
 
             if st.button(
                 "🚀 Send Photo",
                 use_container_width=True
             ):
 
-                img_bytes = up_file.getvalue()
+                image_bytes = uploaded.getvalue()
 
-                vault.add_message(
-                    room_id,
-                    {
-                        "user": username,
-                        "type": "image",
-                        "content": img_bytes,
-                        "time": datetime.now().strftime(
-                            "%I:%M %p"
-                        )
-                    }
-                )
+
+                chat_rooms[room_id].append({
+
+                    "user": username,
+
+                    "type": "image",
+
+                    "content": image_bytes,
+
+                    "time": datetime.now().strftime(
+                        "%I:%M %p"
+                    )
+
+                })
+
+
+                # Keep latest 500 messages only
+
+                if len(chat_rooms[room_id]) > 500:
+
+                    chat_rooms[room_id].pop(0)
+
 
                 st.rerun()
 
+
     # =====================================================
-    # STICKERS
+    # GIF / STICKER TAB
     # =====================================================
 
-    with tab2:
+    with tab_sticker:
 
         cols = st.columns(3)
 
-        for idx, sticker in enumerate(STICKERS):
 
-            with cols[idx % 3]:
+        for index, sticker in enumerate(STICKERS):
+
+            with cols[index % 3]:
 
                 st.image(
                     sticker["url"],
-                    width=70
+                    width=75
                 )
+
 
                 if st.button(
                     sticker["name"],
-                    key=f"sticker_{idx}",
+                    key=f"sticker_{index}",
                     use_container_width=True
                 ):
 
-                    vault.add_message(
-                        room_id,
-                        {
-                            "user": username,
-                            "type": "gif",
-                            "content": sticker["url"],
-                            "time": datetime.now().strftime(
-                                "%I:%M %p"
-                            )
-                        }
-                    )
+                    chat_rooms[room_id].append({
+
+                        "user": username,
+
+                        "type": "gif",
+
+                        "content": sticker["url"],
+
+                        "time": datetime.now().strftime(
+                            "%I:%M %p"
+                        )
+
+                    })
+
+
+                    # Keep latest 500 messages
+
+                    if len(chat_rooms[room_id]) > 500:
+
+                        chat_rooms[room_id].pop(0)
+
 
                     st.rerun()
 
@@ -413,7 +457,7 @@ with st.expander(
 # =========================================================
 
 with st.form(
-    "input_form",
+    "message_form",
     clear_on_submit=True
 ):
 
@@ -421,34 +465,48 @@ with st.form(
         [8, 2]
     )
 
+
     with col1:
 
-        txt = st.text_input(
-            "Type message...",
+        message = st.text_input(
+            "Message",
+            placeholder="Type your message...",
             label_visibility="collapsed",
-            placeholder="Type your message..."
+            max_chars=2000
         )
+
 
     with col2:
 
-        submit = st.form_submit_button(
-            "Send 🚀",
+        send = st.form_submit_button(
+            "🚀 Send",
             use_container_width=True
         )
 
-    if submit and txt.strip():
 
-        vault.add_message(
-            room_id,
-            {
-                "user": username,
-                "type": "text",
-                "content": txt.strip(),
-                "time": datetime.now().strftime(
-                    "%I:%M %p"
-                )
-            }
-        )
+    if send and message.strip():
+
+        chat_rooms[room_id].append({
+
+            "user": username,
+
+            "type": "text",
+
+            "content": message.strip(),
+
+            "time": datetime.now().strftime(
+                "%I:%M %p"
+            )
+
+        })
+
+
+        # Keep latest 500 messages
+
+        if len(chat_rooms[room_id]) > 500:
+
+            chat_rooms[room_id].pop(0)
+
 
         st.rerun()
 
@@ -460,6 +518,8 @@ with st.form(
 st.divider()
 
 st.caption(
-    "⚡ ChatSpace Ultra • Private Room • "
-    "100 Message Limit • Manual Sync • No SQL"
+    "⚡ ChatSpace Ultra • "
+    "500 Message Limit • "
+    "Automatic Refresh • "
+    "Photos • GIFs • Stickers • No SQL"
 )
