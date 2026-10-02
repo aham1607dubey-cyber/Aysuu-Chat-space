@@ -636,4 +636,3 @@ st.caption(
     "🔐 ChatSpace Ultra • Private Room • "
     "No SQL • Room key protected"
 )
-```
