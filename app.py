@@ -1,144 +1,185 @@
+```python
 import streamlit as st
 from datetime import datetime
-import html
 import hashlib
-import secrets
+import html
+import base64
 
-# =========================
-# PAGE CONFIG
-# =========================
+# =========================================================
+# PAGE SETUP
+# =========================================================
+
 st.set_page_config(
-    page_title="ChatSpace // Private",
+    page_title="ChatSpace Ultra",
     page_icon="🔐",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# =========================
-# CYBERPUNK CSS
-# =========================
+# =========================================================
+# STYLE
+# =========================================================
+
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;800&family=JetBrains+Mono:wght@400;600&display=swap');
+
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
 
 * {
     font-family: 'Plus Jakarta Sans', sans-serif;
 }
 
 .stApp {
-    background: radial-gradient(
-        circle at 15% 15%,
-        #0d1224 0%,
-        #05070f 100%
-    );
-    color: #e2e8f0;
+    background:
+        radial-gradient(circle at 10% 20%, #111827 0%, #020617 65%);
+    color: #f8fafc;
 }
 
 [data-testid="stSidebar"] {
-    background: rgba(10, 15, 30, 0.85);
-    backdrop-filter: blur(20px);
+    background: rgba(15, 23, 42, 0.96) !important;
     border-right: 1px solid rgba(255,255,255,0.08);
 }
 
-.msg-card {
-    padding: 14px 18px;
-    border-radius: 18px;
-    margin-bottom: 12px;
-    max-width: 80%;
-    line-height: 1.5;
-    box-shadow: 0 8px 30px rgba(0,0,0,0.25);
-}
-
-.msg-mine {
-    background: linear-gradient(135deg, #6366f1, #8b5cf6);
-    color: white;
-    margin-left: auto;
-    border-bottom-right-radius: 4px;
-}
-
-.msg-theirs {
-    background: rgba(22,28,48,0.9);
-    border: 1px solid rgba(255,255,255,0.07);
-    color: #f1f5f9;
-    margin-right: auto;
-    border-bottom-left-radius: 4px;
-}
-
-.msg-header {
-    font-size: 0.78rem;
+.stButton > button {
+    border-radius: 12px;
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    margin-bottom: 4px;
-    display: flex;
-    justify-content: space-between;
-    opacity: 0.8;
 }
 
-.msg-time {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.7rem;
-    opacity: 0.6;
+.private-card {
+    padding: 35px;
+    margin-top: 100px;
+    border-radius: 22px;
+    text-align: center;
+    background: rgba(15,23,42,0.75);
+    border: 1px solid rgba(129,140,248,0.25);
 }
 
 .room-badge {
     display: inline-block;
-    padding: 5px 12px;
+    padding: 7px 14px;
     border-radius: 999px;
     background: rgba(99,102,241,0.15);
-    border: 1px solid #6366f1;
-    color: #818cf8;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 0.82rem;
+    border: 1px solid rgba(129,140,248,0.5);
+    color: #a5b4fc;
+    font-size: 13px;
 }
 
-.lock-box {
-    padding: 18px;
-    border-radius: 18px;
-    background: rgba(22,28,48,0.65);
-    border: 1px solid rgba(99,102,241,0.3);
-    text-align: center;
+.chat-message {
+    padding: 13px 16px;
+    border-radius: 17px;
+    margin-bottom: 10px;
+    background: rgba(30,41,59,0.80);
+    border: 1px solid rgba(255,255,255,0.06);
 }
+
+.chat-message.mine {
+    background: linear-gradient(135deg,#4f46e5,#7c3aed);
+}
+
+.user-name {
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.message-time {
+    font-size: 10px;
+    opacity: 0.55;
+}
+
+.message-text {
+    margin-top: 5px;
+    word-wrap: break-word;
+}
+
 </style>
 """, unsafe_allow_html=True)
 
 
-# =========================
-# GLOBAL CHAT STORAGE
-# =========================
+# =========================================================
+# GLOBAL MEMORY
+# =========================================================
+
 @st.cache_resource
-def get_global_store():
+def get_chat_store():
     return {}
 
-chat_rooms = get_global_store()
+
+chat_rooms = get_chat_store()
 
 
-# =========================
-# SESSION STATE
-# =========================
-if "connected_room" not in st.session_state:
-    st.session_state.connected_room = None
+# =========================================================
+# ROOM KEY HASH
+# =========================================================
 
-if "verified" not in st.session_state:
-    st.session_state.verified = False
-
-
-# =========================
-# HASH ROOM KEY
-# =========================
-def hash_room_key(room_key):
+def make_room_id(room_key):
     return hashlib.sha256(
-        room_key.encode("utf-8")
+        room_key.strip().encode("utf-8")
     ).hexdigest()
 
 
-# =========================
+# =========================================================
+# STICKERS / GIFS
+# =========================================================
+
+STICKERS = [
+    (
+        "🔥 Fire",
+        "https://media.giphy.com/media/ICOgUNjpvO0PC/giphy.gif"
+    ),
+    (
+        "😂 Laugh",
+        "https://media.giphy.com/media/26n6Gx9moCgs1DflG/giphy.gif"
+    ),
+    (
+        "❤️ Love",
+        "https://media.giphy.com/media/R6gVNROjBy4UM/giphy.gif"
+    ),
+    (
+        "😎 Cool",
+        "https://media.giphy.com/media/jpbnoe3UIa8TU8LM13/giphy.gif"
+    ),
+    (
+        "🎉 Party",
+        "https://media.giphy.com/media/blSTtZehjAZ8I/giphy.gif"
+    ),
+    (
+        "👀 Shock",
+        "https://media.giphy.com/media/5VKbvrjxpVJCM/giphy.gif"
+    ),
+    (
+        "🚀 Rocket",
+        "https://media.giphy.com/media/3ohnEqJ1XOfvWaSk7e/giphy.gif"
+    ),
+    (
+        "👋 Bye",
+        "https://media.giphy.com/media/ASd0Ukj0BC5roG5Lmp/giphy.gif"
+    )
+]
+
+
+# =========================================================
+# SESSION STATE
+# =========================================================
+
+if "connected_room" not in st.session_state:
+    st.session_state.connected_room = None
+
+if "current_user" not in st.session_state:
+    st.session_state.current_user = None
+
+
+# =========================================================
 # SIDEBAR
-# =========================
+# =========================================================
+
 with st.sidebar:
 
-    st.markdown("### 🔐 **ChatSpace**")
-    st.caption("Private Room • No Phone • No Email")
+    st.markdown("### 🔐 ChatSpace Ultra")
+
+    st.caption(
+        "Private Rooms • Anonymous • No SQL"
+    )
+
     st.divider()
 
     username = st.text_input(
@@ -149,170 +190,231 @@ with st.sidebar:
 
     room_key = st.text_input(
         "🔑 Private Room Key",
-        placeholder="Enter secret key",
+        placeholder="Minimum 6 characters",
         type="password"
     )
 
     st.divider()
 
-    connect = st.button(
+    connect_button = st.button(
         "🔓 Enter Private Room",
         use_container_width=True
     )
 
-    leave = st.button(
-        "🚪 Leave Room",
-        use_container_width=True
-    )
+    if connect_button:
 
-    if leave:
-        st.session_state.connected_room = None
-        st.session_state.verified = False
-        st.rerun()
+        clean_name = username.strip()
+        clean_key = room_key.strip()
+
+        if not clean_name:
+
+            st.error("Enter your alias.")
+
+        elif len(clean_key) < 6:
+
+            st.error(
+                "Room Key must contain at least 6 characters."
+            )
+
+        else:
+
+            # Room ID is a hash.
+            # The original room key is not stored.
+            room_id = make_room_id(clean_key)
+
+            if room_id not in chat_rooms:
+
+                chat_rooms[room_id] = {
+                    "messages": [],
+                    "users": set()
+                }
+
+            chat_rooms[room_id]["users"].add(
+                clean_name
+            )
+
+            st.session_state.connected_room = room_id
+            st.session_state.current_user = clean_name
+
+            st.rerun()
+
+    # -----------------------------------------------------
+    # CONNECTED CONTROLS
+    # -----------------------------------------------------
+
+    if st.session_state.connected_room:
+
+        room_id = st.session_state.connected_room
+
+        st.divider()
+
+        if room_id in chat_rooms:
+
+            active_users = len(
+                chat_rooms[room_id]["users"]
+            )
+
+            st.metric(
+                "👥 Participants",
+                max(active_users, 1)
+            )
+
+            st.metric(
+                "💬 Messages",
+                len(
+                    chat_rooms[room_id]["messages"]
+                )
+            )
+
+        st.divider()
+
+        if st.button(
+            "🗑️ Clear Room",
+            use_container_width=True
+        ):
+
+            if room_id in chat_rooms:
+
+                chat_rooms[room_id]["messages"] = []
+
+            st.rerun()
+
+        if st.button(
+            "🚪 Leave Room",
+            use_container_width=True
+        ):
+
+            st.session_state.connected_room = None
+            st.session_state.current_user = None
+
+            st.rerun()
 
 
-# =========================
-# CONNECT TO ROOM
-# =========================
-if connect:
+# =========================================================
+# NOT CONNECTED SCREEN
+# =========================================================
 
-    if not username.strip():
-        st.error("Please enter your alias.")
-
-    elif not room_key.strip():
-        st.error("Please enter the private room key.")
-
-    else:
-        room_hash = hash_room_key(room_key.strip())
-
-        # Create room
-        if room_hash not in chat_rooms:
-            chat_rooms[room_hash] = {
-                "messages": [],
-                "users": set(),
-                "created": datetime.now().strftime("%d-%m-%Y %I:%M %p")
-            }
-
-        st.session_state.connected_room = room_hash
-        st.session_state.verified = True
-
-        chat_rooms[room_hash]["users"].add(
-            username.strip()
-        )
-
-        st.rerun()
-
-
-# =========================
-# MAIN PAGE
-# =========================
-if not st.session_state.verified:
+if not st.session_state.connected_room:
 
     st.markdown("""
-    <div class="lock-box" style="margin-top:120px;">
-        <h1>🔐 Private ChatSpace</h1>
+    <div class="private-card">
+
+        <h1>🔐 ChatSpace Ultra</h1>
 
         <p style="color:#94a3b8;">
-            Enter your alias and secret room key
-            to join a private room.
+            Your private room for anonymous chatting.
         </p>
 
         <p style="color:#818cf8;">
-            Only people with the same room key
-            can access that room.
+            Share your Room Key only with the people
+            you want inside the room.
         </p>
+
+        <p style="color:#64748b;">
+            No phone number • No email • No SQL
+        </p>
+
     </div>
     """, unsafe_allow_html=True)
 
-else:
+    st.stop()
 
-    room_hash = st.session_state.connected_room
-    room = chat_rooms[room_hash]
 
-    # Keep current user registered
-    room["users"].add(username.strip())
+# =========================================================
+# CONNECTED ROOM
+# =========================================================
 
-    # =========================
-    # HEADER
-    # =========================
-    st.markdown(
-        """
-        <div>
-            <span class="room-badge">
-                🔒 PRIVATE ROOM
-            </span>
-        </div>
-        """,
-        unsafe_allow_html=True
+room_id = st.session_state.connected_room
+current_user = st.session_state.current_user
+
+room = chat_rooms[room_id]
+
+# Make sure current user remains registered.
+room["users"].add(current_user)
+
+
+# =========================================================
+# HEADER
+# =========================================================
+
+st.markdown(
+    '<span class="room-badge">🔒 PRIVATE ROOM</span>',
+    unsafe_allow_html=True
+)
+
+st.title("💬 ChatSpace")
+
+col1, col2 = st.columns([7, 2])
+
+with col1:
+
+    st.caption(
+        f"Connected as **{current_user}**"
     )
 
-    st.markdown("### 💬 Secure Chat")
+with col2:
 
-    col1, col2 = st.columns([8, 2])
+    st.metric(
+        "👥 Active",
+        len(room["users"])
+    )
 
-    with col1:
-        st.caption(
-            "Your messages are visible only inside this room."
+st.divider()
+
+
+# =========================================================
+# DISPLAY CHAT
+# =========================================================
+
+if not room["messages"]:
+
+    st.info(
+        "💬 No messages yet. Start the conversation!"
+    )
+
+else:
+
+    for message in room["messages"]:
+
+        is_me = (
+            message["user"] == current_user
         )
 
-    with col2:
-        st.metric(
-            "Participants",
-            len(room["users"])
+        safe_user = html.escape(
+            message["user"]
         )
 
-    st.divider()
-
-
-    # =========================
-    # CHAT DISPLAY
-    # =========================
-    if not room["messages"]:
-
-        st.info(
-            "This private room is empty. Send the first message! 👋"
+        safe_content = html.escape(
+            message["content"]
         )
 
-    else:
+        safe_time = html.escape(
+            message["time"]
+        )
 
-        for msg in room["messages"]:
+        css_class = (
+            "chat-message mine"
+            if is_me
+            else "chat-message"
+        )
 
-            is_me = (
-                msg["user"] == username.strip()
-            )
+        # ---------------- TEXT ----------------
 
-            bubble_class = (
-                "msg-mine"
-                if is_me
-                else "msg-theirs"
-            )
-
-            tag = (
-                "You"
-                if is_me
-                else html.escape(msg["user"])
-            )
-
-            safe_content = html.escape(
-                msg["content"]
-            )
-
-            safe_time = html.escape(
-                msg["time"]
-            )
+        if message["type"] == "text":
 
             st.markdown(
                 f"""
-                <div class="msg-card {bubble_class}">
+                <div class="{css_class}">
 
-                    <div class="msg-header">
-                        <span>{tag}</span>
-                        <span class="msg-time">
-                            {safe_time}
+                    <div class="user-name">
+                        {safe_user}
+
+                        <span class="message-time">
+                            • {safe_time}
                         </span>
                     </div>
 
-                    <div>
+                    <div class="message-text">
                         {safe_content}
                     </div>
 
@@ -321,86 +423,218 @@ else:
                 unsafe_allow_html=True
             )
 
+        # ---------------- GIF ----------------
 
-    # =========================
-    # SEND MESSAGE
-    # =========================
-    with st.form(
-        "chat_input_form",
-        clear_on_submit=True
-    ):
+        elif message["type"] == "gif":
 
-        user_msg = st.text_input(
-            "Message",
-            placeholder="Type your private message...",
-            label_visibility="collapsed",
-            max_chars=1000
-        )
+            st.markdown(
+                f"""
+                <div class="{css_class}">
 
-        send_btn = st.form_submit_button(
-            "Send 🚀",
-            use_container_width=True
-        )
+                    <div class="user-name">
+                        {safe_user}
 
-        if send_btn and user_msg.strip():
+                        <span class="message-time">
+                            • {safe_time}
+                        </span>
+                    </div>
 
-            room["messages"].append({
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
 
-                "user": username.strip(),
+            st.image(
+                message["content"],
+                width=220
+            )
 
-                "content": user_msg.strip(),
+        # ---------------- IMAGE ----------------
 
-                "time": datetime.now().strftime(
-                    "%I:%M %p"
+        elif message["type"] == "image":
+
+            st.markdown(
+                f"""
+                <div class="{css_class}">
+
+                    <div class="user-name">
+                        {safe_user}
+
+                        <span class="message-time">
+                            • {safe_time}
+                        </span>
+                    </div>
+
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+            try:
+
+                image_bytes = base64.b64decode(
+                    message["content"]
                 )
-            })
 
-            st.rerun()
+                st.image(
+                    image_bytes,
+                    width=400
+                )
 
+            except Exception:
 
-    # =========================
-    # ROOM CONTROLS
-    # =========================
-    st.divider()
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-
-        if st.button(
-            "🗑️ Clear This Room",
-            use_container_width=True
-        ):
-
-            room["messages"] = []
-            st.rerun()
-
-    with col2:
-
-        if st.button(
-            "🚪 Leave Private Room",
-            use_container_width=True
-        ):
-
-            st.session_state.connected_room = None
-            st.session_state.verified = False
-            st.rerun()
+                st.warning(
+                    "Unable to display this image."
+                )
 
 
-# =========================
+# =========================================================
+# MEDIA AREA
+# =========================================================
+
+with st.expander(
+    "✨ Photo • Sticker • GIF"
+):
+
+    tab_photo, tab_sticker = st.tabs(
+        [
+            "📷 Photo",
+            "🎭 Stickers"
+        ]
+    )
+
+    # =====================================================
+    # PHOTO
+    # =====================================================
+
+    with tab_photo:
+
+        uploaded_file = st.file_uploader(
+            "Choose a photo",
+            type=[
+                "png",
+                "jpg",
+                "jpeg",
+                "webp"
+            ],
+            key="photo_upload"
+        )
+
+        if uploaded_file is not None:
+
+            if st.button(
+                "🚀 Send Photo",
+                use_container_width=True
+            ):
+
+                image_bytes = uploaded_file.read()
+
+                # Store image as Base64 inside memory.
+                image_base64 = base64.b64encode(
+                    image_bytes
+                ).decode("utf-8")
+
+                room["messages"].append({
+
+                    "user": current_user,
+
+                    "type": "image",
+
+                    "content": image_base64,
+
+                    "time": datetime.now().strftime(
+                        "%I:%M %p"
+                    )
+                })
+
+                st.rerun()
+
+    # =====================================================
+    # STICKERS
+    # =====================================================
+
+    with tab_sticker:
+
+        sticker_columns = st.columns(4)
+
+        for index, (name, url) in enumerate(STICKERS):
+
+            with sticker_columns[index % 4]:
+
+                st.image(
+                    url,
+                    width=70
+                )
+
+                if st.button(
+                    name,
+                    key=f"sticker_{index}",
+                    use_container_width=True
+                ):
+
+                    room["messages"].append({
+
+                        "user": current_user,
+
+                        "type": "gif",
+
+                        "content": url,
+
+                        "time": datetime.now().strftime(
+                            "%I:%M %p"
+                        )
+                    })
+
+                    st.rerun()
+
+
+# =========================================================
+# TEXT MESSAGE
+# =========================================================
+
+with st.form(
+    "message_form",
+    clear_on_submit=True
+):
+
+    chat_text = st.text_input(
+        "Message",
+        placeholder="Type your private message...",
+        label_visibility="collapsed",
+        max_chars=2000
+    )
+
+    send_button = st.form_submit_button(
+        "🚀 Send",
+        use_container_width=True
+    )
+
+    if send_button and chat_text.strip():
+
+        room["messages"].append({
+
+            "user": current_user,
+
+            "type": "text",
+
+            "content": chat_text.strip(),
+
+            "time": datetime.now().strftime(
+                "%I:%M %p"
+            )
+        })
+
+        st.rerun()
+
+
+# =========================================================
 # FOOTER
-# =========================
-st.markdown(
-    """
-    <div style="
-        text-align:center;
-        color:#64748b;
-        margin-top:40px;
-        font-size:12px;
-    ">
-        🔐 ChatSpace Private Room
-        • Share your room key only with trusted people
-    </div>
-    """,
-    unsafe_allow_html=True
+# =========================================================
+
+st.divider()
+
+st.caption(
+    "🔐 ChatSpace Ultra • Private Room • "
+    "No SQL • Room key protected"
 )
+```
