@@ -171,7 +171,7 @@ if "notice" not in st.session_state:
     if "show_call" not in st.session_state:
         st.session_state.show_call=False
         if "call_type" not in st.session_state:
-            st.session_state.call_type+"video"
+            st.session_state.call_type="video"
 
 
 # ==========================================
