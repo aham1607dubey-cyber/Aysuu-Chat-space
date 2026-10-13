@@ -48,7 +48,7 @@ def time_text(value):
 # ==========================================
 
 def db_connect():
-    conn = sqlite3.connect(DB, timeout=20)
+    conn = sqlite3.connect("chat_v2.db", timeout=20)
     conn.execute("PRAGMA busy_timeout = 20000")
     return conn
 
