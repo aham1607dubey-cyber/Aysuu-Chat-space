@@ -445,24 +445,76 @@ with right:
 # ==========================================
 
 c1, c2, c3 = st.columns(3)
+# ==================== CALL / MEDIA ACTION BUTTONS ====================
+c1, c2, c3, c4 = st.columns(4)
 
 with c1:
-    if st.button("📞 Audio Call", use_container_width=True, key="audio_call"):
-        st.session_state.show_call = not st.session_state.show_call
+    if st.button("📞 Audio Call", use_container_width=True, key="audio_call_btn"):
+        st.session_state.show_call = True
         st.session_state.call_type = "audio"
+        st.session_state.show_gif = False
+        st.session_state.show_photo = False
 
 with c2:
-    if st.button("📹 Video Call", use_container_width=True, key="video_call"):
-        st.session_state.show_call = not st.session_state.show_call
+    if st.button("📹 Video Call", use_container_width=True, key="video_call_btn"):
+        st.session_state.show_call = True
         st.session_state.call_type = "video"
+        st.session_state.show_gif = False
+        st.session_state.show_photo = False
 
 with c3:
-    st.button(
-        "🎞️ GIF",
-        use_container_width=True,
-        disabled=True,
-        key="gif_button"
-    )
+    if st.button("🎭 GIF", use_container_width=True, key="gif_toggle_btn"):
+        st.session_state.show_gif = not st.session_state.get("show_gif", False)
+        st.session_state.show_call = False
+        st.session_state.show_photo = False
+
+with c4:
+    if st.button("📷 Photo", use_container_width=True, key="photo_toggle_btn"):
+        st.session_state.show_photo = not st.session_state.get("show_photo", False)
+        st.session_state.show_call = False
+        st.session_state.show_gif = False
+
+
+# ==================== 1. LIVE CALL SECTION ====================
+if st.session_state.get("show_call", False):
+    room_name = st.session_state.get("room", "Friends")
+    safe_room = "".join(e for e in room_name if e.isalnum())
+    
+    if st.session_state.get("call_type") == "audio":
+        call_url = f"https://meet.jit.si/aysuu_{safe_room}#config.startWithVideoMuted=true"
+    else:
+        call_url = f"https://meet.jit.si/aysuu_{safe_room}#config.startWithVideoMuted=false"
+
+    st.success(f"Connected to Call: {room_name}")
+    components.iframe(call_url, height=500, scrolling=False)
+    
+    if st.button("❌ End Call", key="end_call_trigger"):
+        st.session_state.show_call = False
+        st.rerun()
+
+
+# ==================== 2. GIF SEARCH & SEND SECTION ====================
+if st.session_state.get("show_gif", False):
+    with st.expander("🔍 Search & Send GIF", expanded=True):
+        gif_search = st.text_input("GIF Search karo (e.g. funny, hello, dancing):", key="gif_query")
+        
+        # Free Giphy API embed preview
+        if gif_search:
+            import urllib.parse
+            query_encoded = urllib.parse.quote(gif_search)
+            # Giphy embed link
+            giphy_embed = f"https://giphy.com/embed?q={query_encoded}"
+            st.caption("Select GIF URL ya custom GIF link yahan daal kar send karo:")
+        
+        custom_gif_url = st.text_input("Paste GIF direct link (.gif URL):", placeholder="https://media.giphy.com/media/.../giphy.gif")
+        if st.button("Send GIF 🚀", key="send_gif_btn"):
+            if custom_gif_url:
+                # DB me as image/gif save karne ke liye
+                conn = db_connect()
+                conn.execute(
+                    "INSERT INTO messages (room, user, avatar, kind, body, image, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (st.session_state.room, st.session_state
+
 
 st.caption(
     "Calling and GIF search need additional real-time service integration."
