@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import sqlite3
 import html
 import uuid
@@ -167,6 +168,10 @@ if "joined_room" not in st.session_state:
 
 if "notice" not in st.session_state:
     st.session_state.notice = ""
+    if "show_call" not in st.session_state:
+        st.session_state.show_call=False
+        if "call_type" not in st.session_state:
+            st.session_state.call_type+"video"
 
 
 # ==========================================
@@ -442,20 +447,14 @@ with right:
 c1, c2, c3 = st.columns(3)
 
 with c1:
-    st.button(
-        "📞 Audio Call",
-        use_container_width=True,
-        disabled=True,
-        key="audio_call"
-    )
+    if st.button("📞 Audio Call", use_container_width=True, key="audio_call"):
+        st.session_state.show_call = not st.session_state.show_call
+        st.session_state.call_type = "audio"
 
 with c2:
-    st.button(
-        "📹 Video Call",
-        use_container_width=True,
-        disabled=True,
-        key="video_call"
-    )
+    if st.button("📹 Video Call", use_container_width=True, key="video_call"):
+        st.session_state.show_call = not st.session_state.show_call
+        st.session_state.call_type = "video"
 
 with c3:
     st.button(
