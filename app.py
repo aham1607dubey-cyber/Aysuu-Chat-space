@@ -3,6 +3,7 @@ import streamlit.components.v1 as components
 import sqlite3
 import html
 import uuid
+import urllib.parse
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from pathlib import Path
@@ -19,7 +20,6 @@ st.set_page_config(
 )
 
 IST = ZoneInfo("Asia/Kolkata")
-DB = Path(__file__).with_name("aysuu_chat.db")
 
 AVATARS = {
     "Boy 1": "👨🏻",
@@ -43,7 +43,6 @@ def time_text(value):
     except (ValueError, TypeError):
         return "--:--"
 
-
 # ==========================================
 # DATABASE
 # ==========================================
@@ -52,7 +51,6 @@ def db_connect():
     conn = sqlite3.connect("chat_v2.db", timeout=20)
     conn.execute("PRAGMA busy_timeout = 20000")
     return conn
-
 
 def init_db():
     with db_connect() as conn:
@@ -69,19 +67,17 @@ def init_db():
             )
         """)
 
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS room_events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                room TEXT NOT NULL,
-                user TEXT NOT NULL,
-                avatar TEXT NOT NULL,
-                event TEXT NOT NULL,
-                created_at TEXT NOT NULL
-            )
-        """)
-
+        conn.execute("""  
+            CREATE TABLE IF NOT EXISTS room_events (  
+                id INTEGER PRIMARY KEY AUTOINCREMENT,  
+                room TEXT NOT NULL,  
+                user TEXT NOT NULL,  
+                avatar TEXT NOT NULL,  
+                event TEXT NOT NULL,  
+                created_at TEXT NOT NULL  
+            )  
+        """)  
         conn.commit()
-
 
 def save_text(room, user, avatar, text):
     with db_connect() as conn:
@@ -93,7 +89,7 @@ def save_text(room, user, avatar, text):
             room, user, avatar, text,
             now_ist().isoformat()
         ))
-
+        conn.commit()
 
 def save_image(room, user, avatar, image_bytes, caption):
     with db_connect() as conn:
@@ -106,7 +102,19 @@ def save_image(room, user, avatar, image_bytes, caption):
             sqlite3.Binary(image_bytes),
             now_ist().isoformat()
         ))
+        conn.commit()
 
+def save_gif(room, user, avatar, gif_url):
+    with db_connect() as conn:
+        conn.execute("""
+            INSERT INTO messages
+            (room, user, avatar, kind, body, image, created_at)
+            VALUES (?, ?, ?, 'gif', ?, NULL, ?)
+        """, (
+            room, user, avatar, gif_url,
+            now_ist().isoformat()
+        ))
+        conn.commit()
 
 def load_messages(room):
     with db_connect() as conn:
@@ -117,9 +125,7 @@ def load_messages(room):
             ORDER BY id DESC
             LIMIT 500
         """, (room,)).fetchall()
-
     return list(reversed(rows))
-
 
 def add_room_event(room, user, avatar):
     with db_connect() as conn:
@@ -131,7 +137,7 @@ def add_room_event(room, user, avatar):
             room, user, avatar,
             now_ist().isoformat()
         ))
-
+        conn.commit()
 
 def load_events(room):
     with db_connect() as conn:
@@ -143,9 +149,7 @@ def load_events(room):
             LIMIT 10
         """, (room,)).fetchall()
 
-
 init_db()
-
 
 # ==========================================
 # SESSION
@@ -168,524 +172,215 @@ if "joined_room" not in st.session_state:
 
 if "notice" not in st.session_state:
     st.session_state.notice = ""
-    if "show_call" not in st.session_state:
-        st.session_state.show_call=False
-        if "call_type" not in st.session_state:
-            st.session_state.call_type="video"
 
+if "show_call" not in st.session_state:
+    st.session_state.show_call = False
+
+if "call_type" not in st.session_state:
+    st.session_state.call_type = "video"
+
+if "show_gif" not in st.session_state:
+    st.session_state.show_gif = False
+
+if "show_photo" not in st.session_state:
+    st.session_state.show_photo = False
 
 # ==========================================
 # PREMIUM CSS
 # ==========================================
 
 st.markdown("""
-<style>
-@import url(
-'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap'
-);
-
-.stApp {
-    background:
-        radial-gradient(ellipse at 0% 0%, #1e1b4b 0%, transparent 38%),
-        radial-gradient(ellipse at 100% 30%, #172554 0%, transparent 35%),
-        linear-gradient(145deg, #060816, #0b1020 55%, #080b18);
-    color: #f8fafc;
-    font-family: Inter, sans-serif;
+<style>  
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');  
+  
+.stApp {  
+    background:  
+        radial-gradient(ellipse at 0% 0%, #1e1b4b 0%, transparent 40%),  
+        radial-gradient(ellipse at 100% 30%, #0f172a 0%, #090d16 100%);  
+    font-family: 'Inter', sans-serif;
+    color: #f1f5f9;
 }
 
-.block-container {
-    max-width: 1150px;
-    padding-top: 1.7rem;
-    padding-bottom: 4rem;
-}
-
-.aysuu-header {
-    padding: 26px;
-    border-radius: 25px;
-    background: linear-gradient(
-        130deg,
-        rgba(30,41,89,.88),
-        rgba(17,24,39,.86)
-    );
-    border: 1px solid rgba(167,139,250,.25);
-    box-shadow: 0 15px 55px rgba(0,0,0,.28);
-    margin-bottom: 22px;
-}
-
-.logo {
-    font-size: 32px;
-    font-weight: 800;
-    letter-spacing: -1.2px;
-}
-
-.gradient {
-    background: linear-gradient(90deg,#60a5fa,#c084fc,#f0abfc);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-}
-
-.tagline {
-    color: #a5b4fc;
-    font-size: 11px;
-    letter-spacing: 2px;
-    margin-top: 7px;
-}
-
-.panel {
-    padding: 19px;
-    background: rgba(15,23,42,.72);
-    border: 1px solid rgba(148,163,184,.16);
-    border-radius: 20px;
-    margin-bottom: 16px;
-}
-
-.chat-message {
-    display: flex;
-    gap: 11px;
-    align-items: flex-start;
-    margin: 18px 0;
-}
-
-.avatar {
-    min-width: 43px;
-    height: 43px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 25px;
-    background: linear-gradient(135deg,#312e81,#1e293b);
-    border: 1px solid rgba(167,139,250,.3);
-    border-radius: 15px;
-}
-
-.bubble {
-    padding: 12px 15px;
-    max-width: 100%;
-    background: #172036;
-    border: 1px solid rgba(148,163,184,.12);
-    border-radius: 5px 17px 17px 17px;
-    overflow-wrap: anywhere;
-}
-
-.my-bubble {
-    background: linear-gradient(135deg,#4338ca,#6d28d9);
-    border-radius: 17px 5px 17px 17px;
-}
-
-.username {
-    color: #c4b5fd;
-    font-size: 12px;
-    font-weight: 700;
-    margin-bottom: 5px;
-}
-
-.timestamp {
-    font-size: 10px;
-    color: #cbd5e1;
-    margin-top: 7px;
-}
-
-.online-dot {
+.chat-bubble-me {
+    background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+    color: #ffffff !important;
+    padding: 10px 14px;
+    border-radius: 14px 14px 2px 14px;
+    margin-bottom: 6px;
     display: inline-block;
-    width: 8px;
-    height: 8px;
-    background: #4ade80;
-    border-radius: 50%;
-    margin-right: 7px;
+    max-width: 80%;
+    word-break: break-word;
 }
 
-div.stButton > button {
-    min-height: 43px;
-    border-radius: 13px;
-    background: #171e35;
-    color: white;
-    border: 1px solid rgba(148,163,184,.2);
-    font-weight: 600;
-    transition: .2s;
+.chat-bubble-other {
+    background: #1e293b;
+    color: #f1f5f9 !important;
+    padding: 10px 14px;
+    border-radius: 14px 14px 14px 2px;
+    margin-bottom: 6px;
+    display: inline-block;
+    max-width: 80%;
+    word-break: break-word;
+    border: 1px solid #334155;
 }
 
-div.stButton > button:hover {
-    background: #312e81;
-    border-color: #a78bfa;
-    color: white;
-}
-
-[data-testid="stChatInput"] {
-    border-radius: 16px;
-}
-
-[data-testid="stFileUploader"] {
-    background: rgba(30,41,59,.4);
-    border-radius: 15px;
-    padding: 8px;
-}
-
-hr {
-    border-color: rgba(148,163,184,.15);
+.chat-time {
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin-top: 3px;
 }
 </style>
 """, unsafe_allow_html=True)
 
-
 # ==========================================
-# SIDEBAR / PROFILE
+# SIDEBAR
 # ==========================================
 
 with st.sidebar:
-    st.markdown("## ⚡ Aysuu")
+    st.title("⚡ Aysuu")
     st.caption("YOUR PEOPLE. YOUR SPACE.")
 
-    st.markdown("---")
-
-    new_name = st.text_input(
-        "Your display name",
-        value=st.session_state.username,
-        max_chars=30
-    ).strip()
+    new_user = st.text_input("Your display name", value=st.session_state.username)
+    if new_user:
+        st.session_state.username = new_user
 
     avatar_choice = st.selectbox(
         "Choose your avatar",
-        list(AVATARS.keys()),
-        index=next(
-            (i for i, key in enumerate(AVATARS)
-             if AVATARS[key] == st.session_state.avatar),
-            6
-        )
+        options=list(AVATARS.keys()),
+        index=list(AVATARS.keys()).index("Cool") if "Cool" in AVATARS else 0
     )
+    st.session_state.avatar = AVATARS[avatar_choice]
 
-    new_avatar = AVATARS[avatar_choice]
-
-    new_room = st.text_input(
-        "Room name",
-        value=st.session_state.room,
-        max_chars=50
-    ).strip()
-
-    if not new_name:
-        new_name = "Guest"
-
-    if not new_room:
-        new_room = "Friends"
-
-    if (
-        new_name != st.session_state.username
-        or new_avatar != st.session_state.avatar
-        or new_room != st.session_state.room
-    ):
-        st.session_state.username = new_name
-        st.session_state.avatar = new_avatar
+    new_room = st.text_input("Room name", value=st.session_state.room)
+    if new_room:
         st.session_state.room = new_room
-        st.session_state.joined_room = None
-        st.rerun()
 
     st.markdown("---")
-    st.markdown("### Your profile")
-
-    st.markdown(
-        f"<div class='panel' style='text-align:center'>"
-        f"<div style='font-size:48px'>{html.escape(st.session_state.avatar)}</div>"
-        f"<div style='font-size:18px;font-weight:700'>"
-        f"{html.escape(st.session_state.username)}</div>"
-        f"<div style='color:#94a3b8;font-size:12px'>"
-        f"Room: {html.escape(st.session_state.room)}</div>"
-        f"</div>",
-        unsafe_allow_html=True
-    )
-
+    st.markdown(f"**Your profile:** {st.session_state.avatar} `{st.session_state.username}`")
+    st.markdown(f"**Current Room:** `{st.session_state.room}`")
     st.caption("Messages and images are stored locally.")
 
-
-# ==========================================
-# JOIN ROOM EVENT
-# ==========================================
-
+# Track Join Room
 if st.session_state.joined_room != st.session_state.room:
-    add_room_event(
-        st.session_state.room,
-        st.session_state.username,
-        st.session_state.avatar
-    )
-
+    add_room_event(st.session_state.room, st.session_state.username, st.session_state.avatar)
     st.session_state.joined_room = st.session_state.room
-    st.session_state.notice = (
-        f"{st.session_state.avatar} "
-        f"{st.session_state.username} joined the room"
-    )
-
 
 # ==========================================
-# HEADER
+# MAIN INTERFACE
 # ==========================================
 
-st.markdown("""
-<div class="aysuu-header">
-    <div class="logo">⚡ <span class="gradient">Aysuu Messenger</span></div>
-    <div class="tagline">PRIVATE CHATS · GOOD VIBES · YOUR PEOPLE</div>
-</div>
-""", unsafe_allow_html=True)
+st.subheader(f"💬 {st.session_state.room}")
+st.caption("Your personal conversation space")
 
-left, right = st.columns([3, 2])
-
-with left:
-    st.markdown(f"### 💬 {html.escape(st.session_state.room)}")
-    st.caption("Your personal conversation space")
-
-with right:
-    st.markdown(
-        f"<div style='text-align:right;padding-top:15px'>"
-        f"<span class='online-dot'></span>"
-        f"<span style='color:#86efac'>IST · {now_ist().strftime('%I:%M %p')}</span>"
-        f"</div>",
-        unsafe_allow_html=True
-    )
-
-
-# ==========================================
-# CALL BUTTONS
-# ==========================================
-
-c1, c2, c3 = st.columns(3)
-# ==================== CALL / MEDIA ACTION BUTTONS ====================
+# Action Buttons
 c1, c2, c3, c4 = st.columns(4)
 
 with c1:
-    if st.button("📞 Audio Call", use_container_width=True, key="audio_call_btn"):
+    if st.button("📞 Audio Call", use_container_width=True, key="btn_audio"):
         st.session_state.show_call = True
         st.session_state.call_type = "audio"
         st.session_state.show_gif = False
         st.session_state.show_photo = False
 
 with c2:
-    if st.button("📹 Video Call", use_container_width=True, key="video_call_btn"):
+    if st.button("📹 Video Call", use_container_width=True, key="btn_video"):
         st.session_state.show_call = True
         st.session_state.call_type = "video"
         st.session_state.show_gif = False
         st.session_state.show_photo = False
 
 with c3:
-    if st.button("🎭 GIF", use_container_width=True, key="gif_toggle_btn"):
+    if st.button("🎭 GIF", use_container_width=True, key="btn_gif"):
         st.session_state.show_gif = not st.session_state.get("show_gif", False)
         st.session_state.show_call = False
         st.session_state.show_photo = False
 
 with c4:
-    if st.button("📷 Photo", use_container_width=True, key="photo_toggle_btn"):
+    if st.button("📷 Photo", use_container_width=True, key="btn_photo"):
         st.session_state.show_photo = not st.session_state.get("show_photo", False)
         st.session_state.show_call = False
         st.session_state.show_gif = False
 
-
-# ==================== 1. LIVE CALL SECTION ====================
+# Live Call View
 if st.session_state.get("show_call", False):
-    room_name = st.session_state.get("room", "Friends")
-    safe_room = "".join(e for e in room_name if e.isalnum())
-    
-    if st.session_state.get("call_type") == "audio":
-        call_url = f"https://meet.jit.si/aysuu_{safe_room}#config.startWithVideoMuted=true"
-    else:
-        call_url = f"https://meet.jit.si/aysuu_{safe_room}#config.startWithVideoMuted=false"
+    safe_room = "".join(e for e in st.session_state.room if e.isalnum())
+    is_audio = st.session_state.get("call_type") == "audio"
+    call_url = f"https://meet.jit.si/aysuu_{safe_room}#config.startWithVideoMuted={'true' if is_audio else 'false'}"
 
-    st.success(f"Connected to Call: {room_name}")
+    st.info(f"Connected to live room: {st.session_state.room}")
     components.iframe(call_url, height=500, scrolling=False)
     
-    if st.button("❌ End Call", key="end_call_trigger"):
+    if st.button("❌ End Call", key="btn_end_call"):
         st.session_state.show_call = False
         st.rerun()
 
-
-# ==================== 2. GIF SEARCH & SEND SECTION ====================
+# GIF Sender
 if st.session_state.get("show_gif", False):
-    with st.expander("🔍 Search & Send GIF", expanded=True):
-        gif_search = st.text_input("GIF Search karo (e.g. funny, hello, dancing):", key="gif_query")
-        
-        # Free Giphy API embed preview
-        if gif_search:
-            import urllib.parse
-            query_encoded = urllib.parse.quote(gif_search)
-            # Giphy embed link
-            giphy_embed = f"https://giphy.com/embed?q={query_encoded}"
-            st.caption("Select GIF URL ya custom GIF link yahan daal kar send karo:")
-        
-        custom_gif_url = st.text_input("Paste GIF direct link (.gif URL):", placeholder="https://media.giphy.com/media/.../giphy.gif")
-        if st.button("Send GIF 🚀", key="send_gif_btn"):
-            if custom_gif_url:
-                # DB me as image/gif save karne ke liye
-                conn = db_connect()
-                conn.execute(
-                    "INSERT INTO messages (room, user, avatar, kind, body, image, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    (st.session_state.room, st.session_state
+    with st.expander("🎭 Send a GIF", expanded=True):
+        gif_input = st.text_input("Direct GIF link paste karo (.gif URL):", placeholder="https://media.giphy.com/media/.../giphy.gif")
+        if st.button("Send GIF 🚀", key="btn_submit_gif"):
+            if gif_input.strip():
+                save_gif(st.session_state.room, st.session_state.username, st.session_state.avatar, gif_input.strip())
+                st.session_state.show_gif = False
+                st.rerun()
+            else:
+                st.warning("Please enter a valid GIF URL")
 
+# Photo Sender
+if st.session_state.get("show_photo", False):
+    with st.expander("📷 Upload & Send Photo", expanded=True):
+        up_img = st.file_uploader("Select an Image", type=["jpg", "jpeg", "png"])
+        caption = st.text_input("Caption (optional):")
+        if up_img is not None:
+            st.image(up_img, width=200, caption="Preview")
+            if st.button("Send Photo 📤", key="btn_submit_photo"):
+                save_image(st.session_state.room, st.session_state.username, st.session_state.avatar, up_img.read(), caption)
+                st.session_state.show_photo = False
+                st.rerun()
 
-st.caption(
-    "Calling and GIF search need additional real-time service integration."
-)
-
-st.markdown("---")
-
-
-# ==========================================
-# RECENT ROOM EVENTS
-# ==========================================
-
+# Room Activity Expander
+events = load_events(st.session_state.room)
 with st.expander("👥 Recent room activity", expanded=False):
-    events = load_events(st.session_state.room)
+    for ev in events:
+        st.caption(f"{ev[2]} **{ev[1]}** joined at {time_text(ev[3])}")
 
-    if not events:
-        st.caption("No room activity yet.")
+st.markdown("---")
+st.subheader("Messages")
 
-    for event_id, event_user, event_avatar, event_time in events:
-        st.write(
-            f"{event_avatar} **{event_user}** joined · "
-            f"{time_text(event_time)}"
-        )
-
-if st.session_state.notice:
-    st.info(st.session_state.notice)
-
-
-# ==========================================
-# CHAT HISTORY
-# ==========================================
-
-st.markdown("### 💬 Messages")
-
+# Display Messages
 messages = load_messages(st.session_state.room)
+msg_container = st.container()
 
-if not messages:
-    st.markdown("""
-    <div class="panel">
-        <h3>👋 Start your conversation</h3>
-        <p style="color:#94a3b8">
-            Send a message or share a picture with your friends.
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
+with msg_container:
+    for msg in messages:
+        # msg: (id, user, avatar, kind, body, image, created_at)
+        is_me = (msg[1] == st.session_state.username)
+        align = "right" if is_me else "left"
+        bubble_cls = "chat-bubble-me" if is_me else "chat-bubble-other"
 
-for (
-    message_id,
-    message_user,
-    message_avatar,
-    kind,
-    body,
-    image_bytes,
-    created_at
-) in messages:
-
-    is_mine = message_user == st.session_state.username
-    bubble_class = "bubble my-bubble" if is_mine else "bubble"
-
-    safe_name = html.escape(
-        "You" if is_mine else message_user
-    )
-
-    safe_body = html.escape(body or "")
-    safe_time = time_text(created_at)
-
-    st.markdown(
-        f"""
-        <div class="chat-message">
-            <div class="avatar">{html.escape(message_avatar)}</div>
-            <div class="{bubble_class}">
-                <div class="username">{safe_name}</div>
-                {safe_body.replace(chr(10), '<br>')}
-                <div class="timestamp">{safe_time}</div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    if kind == "image" and image_bytes:
-        st.image(
-            bytes(image_bytes),
-            caption=f"{message_user} · {safe_time}",
-            width=400
+        st.markdown(
+            f"<div style='text-align: {align}; margin-bottom: 8px;'>"
+            f"<span style='font-size: 0.82rem; color: #94a3b8;'>{msg[2]} <b>{html.escape(msg[1])}</b></span><br>"
+            f"<div class='{bubble_cls}'>",
+            unsafe_allow_html=True
         )
 
+        if msg[3] == "text":
+            st.markdown(f"<span>{html.escape(msg[4] or '')}</span>", unsafe_allow_html=True)
+        elif msg[3] == "gif":
+            st.image(msg[4], width=260)
+        elif msg[3] == "image" and msg[5]:
+            st.image(msg[5], width=260)
+            if msg[4]:
+                st.caption(msg[4])
 
-# ==========================================
-# IMAGE UPLOAD + PREVIEW
-# ==========================================
-
-st.markdown("---")
-st.markdown("### 🖼️ Share a picture")
-
-uploaded_image = st.file_uploader(
-    "Choose an image",
-    type=["png", "jpg", "jpeg", "webp"],
-    key="image_upload"
-)
-
-image_caption = st.text_input(
-    "Image caption (optional)",
-    key="image_caption"
-)
-
-if uploaded_image:
-    if uploaded_image.size > 5 * 1024 * 1024:
-        st.error("Image must be 5 MB or smaller.")
-        uploaded_image = None
-    else:
-        st.image(
-            uploaded_image,
-            caption="Preview",
-            width=350
+        st.markdown(
+            f"<div class='chat-time'>{time_text(msg[6])}</div></div></div>",
+            unsafe_allow_html=True
         )
 
-if st.button(
-    "📤 Send Image",
-    use_container_width=True,
-    key="send_image"
-):
-    if not uploaded_image:
-        st.warning("Please select an image first.")
-    elif uploaded_image.size > 5 * 1024 * 1024:
-        st.error("Image is too large. Maximum size is 5 MB.")
-    else:
-        save_image(
-            st.session_state.room,
-            st.session_state.username,
-            st.session_state.avatar,
-            uploaded_image.getvalue(),
-            image_caption.strip()
-        )
-
-        st.session_state.notice = "Image saved successfully!"
-        st.rerun()
-
-
-# ==========================================
-# TEXT MESSAGE INPUT
-# ==========================================
-
-new_message = st.chat_input(
-    "Write a message...",
-    key="message_input"
-)
-
-if new_message and new_message.strip():
-    save_text(
-        st.session_state.room,
-        st.session_state.username,
-        st.session_state.avatar,
-        new_message.strip()
-    )
-
+# Chat Input Bar
+user_input = st.chat_input("Write a message...")
+if user_input:
+    save_text(st.session_state.room, st.session_state.username, st.session_state.avatar, user_input)
     st.rerun()
-
-
-# ==========================================
-# FOOTER
-# ==========================================
-
-st.markdown("---")
-
-st.markdown(
-    """
-    <div style="text-align:center;color:#64748b;font-size:12px">
-        ⚡ Aysuu Messenger<br>
-        Made with Python & Streamlit
-    </div>
-    """,
-    unsafe_allow_html=True
-)
