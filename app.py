@@ -1,525 +1,407 @@
 import streamlit as st
+import sqlite3
+import html
+import uuid
 from datetime import datetime
-from streamlit_autorefresh import st_autorefresh
+from zoneinfo import ZoneInfo
+from pathlib import Path
 
-
-# =========================================================
-# PAGE SETUP
-# =========================================================
+# ==================================================
+# CONFIGURATION
+# ==================================================
 
 st.set_page_config(
-    page_title="ChatSpace // Ghost",
-    page_icon="⚡",
+    page_title="Aysuu Messenger",
+    page_icon="💬",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-
-# =========================================================
-# AUTOMATIC REFRESH
-# =========================================================
-
-# Chat automatically checks for new messages every 2 seconds.
-# User ko koi Sync button nahi chahiye.
-
-st_autorefresh(
-    interval=2000,
-    key="chat_auto_refresh"
-)
+IST = ZoneInfo("Asia/Kolkata")
+DB_PATH = Path(__file__).with_name("aysuu_chat.db")
 
 
-# =========================================================
-# MODERN CSS
-# =========================================================
+def current_time():
+    return datetime.now(IST).strftime("%I:%M %p")
+
+
+def current_timestamp():
+    return datetime.now(IST).isoformat(timespec="seconds")
+
+
+# ==================================================
+# DATABASE — LOCAL PERSISTENT STORAGE
+# ==================================================
+
+def init_db():
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                room TEXT NOT NULL,
+                user TEXT NOT NULL,
+                message TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        """)
+        conn.commit()
+
+
+def save_message(room, user, message):
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(
+            """
+            INSERT INTO messages (room, user, message, created_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (room, user, message, current_timestamp())
+        )
+        conn.commit()
+
+
+def load_messages(room, limit=500):
+    with sqlite3.connect(DB_PATH) as conn:
+        rows = conn.execute(
+            """
+            SELECT user, message, created_at
+            FROM messages
+            WHERE room = ?
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (room, limit)
+        ).fetchall()
+
+    return [
+        {
+            "user": row[0],
+            "text": row[1],
+            "time": row[2]
+        }
+        for row in reversed(rows)
+    ]
+
+
+init_db()
+
+
+# ==================================================
+# PREMIUM DESIGN
+# ==================================================
 
 st.markdown("""
 <style>
-
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&display=swap');
-
-* {
-    font-family: 'Plus Jakarta Sans', sans-serif;
-}
+@import url(
+'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap'
+);
 
 .stApp {
     background:
-        radial-gradient(
-            circle at 10% 20%,
-            #0f172a 0%,
-            #020617 100%
-        );
-
+        radial-gradient(ellipse at top left, #172554 0%, transparent 40%),
+        linear-gradient(135deg, #070b16, #101729 55%, #080c18);
     color: #f8fafc;
+    font-family: 'Inter', sans-serif;
 }
 
-[data-testid="stSidebar"] {
-    background: rgba(15, 23, 42, 0.96) !important;
+.block-container {
+    max-width: 1100px;
+    padding-top: 2rem;
+    padding-bottom: 5rem;
 }
 
-.stButton > button {
+.aysuu-header {
+    padding: 26px;
+    border-radius: 24px;
+    background: rgba(15, 23, 42, .8);
+    border: 1px solid rgba(148, 163, 184, .18);
+    margin-bottom: 22px;
+}
+
+.aysuu-logo {
+    font-size: 30px;
+    font-weight: 800;
+    letter-spacing: -1px;
+}
+
+.aysuu-gradient {
+    background: linear-gradient(90deg, #60a5fa, #c084fc, #f0abfc);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.aysuu-subtitle {
+    color: #94a3b8;
+    margin-top: 7px;
+    font-size: 12px;
+    letter-spacing: 1.4px;
+}
+
+.aysuu-panel {
+    padding: 18px;
+    border: 1px solid rgba(148, 163, 184, .15);
+    border-radius: 20px;
+    background: rgba(15, 23, 42, .68);
+    margin-bottom: 18px;
+}
+
+.aysuu-message {
+    background: #1e293b;
+    padding: 12px 16px;
+    border-radius: 5px 18px 18px 18px;
+    margin: 8px 0 15px;
+    max-width: 82%;
+    width: fit-content;
+    overflow-wrap: anywhere;
+    border: 1px solid rgba(148, 163, 184, .12);
+}
+
+.aysuu-own {
+    background: linear-gradient(135deg, #2563eb, #6d28d9);
+    padding: 12px 16px;
+    border-radius: 18px 5px 18px 18px;
+    margin: 8px 0 15px auto;
+    max-width: 82%;
+    width: fit-content;
+    overflow-wrap: anywhere;
+}
+
+.aysuu-name {
+    font-size: 12px;
+    color: #c4b5fd;
+    font-weight: 700;
+    margin-bottom: 5px;
+}
+
+.aysuu-time {
+    color: #cbd5e1;
+    font-size: 10px;
+    margin-top: 7px;
+}
+
+div.stButton > button {
     border-radius: 12px;
+    min-height: 42px;
+    background: #172036;
+    color: white;
+    border: 1px solid rgba(148, 163, 184, .25);
     font-weight: 600;
 }
 
+div.stButton > button:hover {
+    background: #293858;
+    color: white;
+    border-color: #818cf8;
+}
+
+[data-testid="stChatInput"] {
+    border-radius: 16px;
+}
+
+hr {
+    border-color: rgba(148, 163, 184, .15);
+}
 </style>
 """, unsafe_allow_html=True)
 
 
-# =========================================================
-# SHARED CHAT STORE
-# =========================================================
+# ==================================================
+# SESSION STATE
+# ==================================================
 
-@st.cache_resource
-def get_chat_rooms():
+if "username" not in st.session_state:
+    st.session_state.username = "Aham"
 
-    return {}
-
-
-chat_rooms = get_chat_rooms()
+if "room" not in st.session_state:
+    st.session_state.room = "Friends"
 
 
-# =========================================================
-# STICKERS / GIFS
-# =========================================================
-
-STICKERS = [
-
-    {
-        "name": "🔥 Fire",
-        "url": "https://media.giphy.com/media/ICOgUNjpvO0PC/giphy.gif"
-    },
-
-    {
-        "name": "😂 Laugh",
-        "url": "https://media.giphy.com/media/26n6Gx9moCgs1DflG/giphy.gif"
-    },
-
-    {
-        "name": "❤️ Love",
-        "url": "https://media.giphy.com/media/R6gVNROjBy4UM/giphy.gif"
-    },
-
-    {
-        "name": "😎 Cool",
-        "url": "https://media.giphy.com/media/jpbnoe3UIa8TU8LM13/giphy.gif"
-    },
-
-    {
-        "name": "🎉 Party",
-        "url": "https://media.giphy.com/media/blSTtZehjAZ8I/giphy.gif"
-    },
-
-    {
-        "name": "👀 Shock",
-        "url": "https://media.giphy.com/media/5VKbvrjxpVJCM/giphy.gif"
-    }
-]
-
-
-# =========================================================
+# ==================================================
 # SIDEBAR
-# =========================================================
+# ==================================================
 
 with st.sidebar:
+    st.markdown("## ⚡ Aysuu Messenger")
+    st.caption("YOUR SPACE. YOUR PEOPLE.")
 
-    st.markdown("### ⚡ **ChatSpace Ultra**")
+    st.markdown("---")
 
-    st.caption(
-        "🔒 Private Multi-Device Chat"
+    st.session_state.username = st.text_input(
+        "Your display name",
+        value=st.session_state.username,
+        max_chars=30
+    ).strip() or "Guest"
+
+    st.session_state.room = st.text_input(
+        "Room name",
+        value=st.session_state.room,
+        max_chars=50
+    ).strip() or "Friends"
+
+    st.markdown("---")
+
+    st.markdown("### 🟢 Your session")
+    st.write(f"👤 {st.session_state.username}")
+    st.write(f"💬 {st.session_state.room}")
+
+    st.markdown("---")
+
+    st.caption("Messages are stored in a local SQLite database.")
+
+    st.warning(
+        "This local version does not synchronize messages "
+        "between different devices."
     )
 
-    st.divider()
 
-
-    # -----------------------------------------------------
-    # USER NAME
-    # -----------------------------------------------------
-
-    username = st.text_input(
-        "👤 Your Alias",
-        placeholder="e.g. Aham",
-        max_chars=18
-    ).strip()
-
-
-    # -----------------------------------------------------
-    # ROOM KEY
-    # -----------------------------------------------------
-
-    room_id = st.text_input(
-        "🔑 Room Key",
-        placeholder="e.g. friends123",
-        type="password"
-    ).strip().lower()
-
-
-    # -----------------------------------------------------
-    # ROOM
-    # -----------------------------------------------------
-
-    if room_id:
-
-        if room_id not in chat_rooms:
-
-            chat_rooms[room_id] = []
-
-        st.success(
-            f"Room: #{room_id}"
-        )
-
-        st.metric(
-            "💬 Messages",
-            len(chat_rooms[room_id])
-        )
-
-
-    st.divider()
-
-
-    # -----------------------------------------------------
-    # CLEAR ROOM
-    # -----------------------------------------------------
-
-    if st.button(
-        "🗑️ Clear Room Chat",
-        use_container_width=True
-    ):
-
-        if room_id in chat_rooms:
-
-            chat_rooms[room_id] = []
-
-            st.rerun()
-
-
-# =========================================================
-# LOGIN SCREEN
-# =========================================================
-
-if not username or not room_id:
-
-    st.info(
-        "👈 Sidebar mein apna Alias aur Room Key enter karo."
-    )
-
-    st.markdown("""
-    ### ⚡ ChatSpace Ultra
-
-    👤 **Apna naam alag rakho**
-
-    🔑 **Dono log same Room Key use karo**
-
-    💬 **Messages automatically refresh honge**
-
-    📷 **Photos supported**
-
-    🎭 **GIFs & Stickers supported**
-
-    💬 **Maximum 500 messages**
-    """)
-
-    st.stop()
-
-
-# =========================================================
-# CREATE ROOM IF NEEDED
-# =========================================================
-
-if room_id not in chat_rooms:
-
-    chat_rooms[room_id] = []
-
-
-messages = chat_rooms[room_id]
-
-
-# =========================================================
+# ==================================================
 # HEADER
-# =========================================================
+# ==================================================
 
-st.markdown(
-    f"#### 🔒 Private Room: `#{room_id}`"
-)
+st.markdown("""
+<div class="aysuu-header">
+    <div class="aysuu-logo">
+        ⚡ <span class="aysuu-gradient">Aysuu Messenger</span>
+    </div>
+    <div class="aysuu-subtitle">
+        PRIVATE CONVERSATIONS · YOUR OWN SPACE
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+
+# ==================================================
+# ROOM HEADER
+# ==================================================
+
+left, right = st.columns([3, 2])
+
+with left:
+    st.markdown(
+        f"### 💬 {html.escape(st.session_state.room)}"
+    )
+    st.caption("Your conversation space")
+
+with right:
+    st.markdown(
+        f"<div style='text-align:right;color:#86efac;padding-top:15px'>"
+        f"🕒 India Standard Time · {current_time()}</div>",
+        unsafe_allow_html=True
+    )
+
+
+# ==================================================
+# CALL BUTTONS — PLACEHOLDERS
+# ==================================================
+
+call1, call2, call3 = st.columns(3)
+
+with call1:
+    st.button(
+        "📞 Audio Call",
+        key="audio_call",
+        use_container_width=True,
+        disabled=True
+    )
+
+with call2:
+    st.button(
+        "📹 Video Call",
+        key="video_call",
+        use_container_width=True,
+        disabled=True
+    )
+
+with call3:
+    st.button(
+        "🎞️ GIF",
+        key="gif_button",
+        use_container_width=True,
+        disabled=True
+    )
 
 st.caption(
-    f"Connected as **{username}** • "
-    f"{len(messages)}/500 messages"
+    "Audio/video calls and GIF search require additional service integration."
 )
 
-st.divider()
+st.markdown("---")
 
 
-# =========================================================
-# DISPLAY CHAT
-# =========================================================
+# ==================================================
+# CHAT HISTORY
+# ==================================================
+
+messages = load_messages(st.session_state.room)
+
+st.markdown("### 💬 Conversation")
 
 if not messages:
+    st.markdown("""
+    <div class="aysuu-panel">
+        <h3>👋 Welcome to Aysuu Messenger</h3>
+        <p style="color:#94a3b8">
+            Your conversation starts here. Send your first message below.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
 
-    st.info(
-        "💬 No messages yet. "
-        "Start the conversation!"
-    )
+for msg in messages:
+    own = msg["user"] == st.session_state.username
 
-else:
+    bubble_class = "aysuu-own" if own else "aysuu-message"
+    display_name = "You" if own else msg["user"]
 
-    for msg in messages:
+    try:
+        timestamp = datetime.fromisoformat(msg["time"])
+        display_time = timestamp.astimezone(IST).strftime("%I:%M %p")
+    except (ValueError, TypeError):
+        display_time = "--:--"
 
-        is_me = (
-            msg["user"] == username
-        )
+    safe_name = html.escape(display_name)
+    safe_text = html.escape(msg["text"]).replace("\n", "<br>")
+    safe_time = html.escape(display_time)
 
-        avatar = (
-            "👤"
-            if is_me
-            else "💬"
-        )
-
-        role = (
-            "user"
-            if is_me
-            else "assistant"
-        )
-
-
-        with st.chat_message(
-            role,
-            avatar=avatar
-        ):
-
-            st.markdown(
-                f"**{msg['user']}** • "
-                f"*{msg['time']}*"
-            )
-
-
-            # -------------------------------------------------
-            # TEXT MESSAGE
-            # -------------------------------------------------
-
-            if msg["type"] == "text":
-
-                st.write(
-                    msg["content"]
-                )
-
-
-            # -------------------------------------------------
-            # GIF / STICKER
-            # -------------------------------------------------
-
-            elif msg["type"] == "gif":
-
-                st.image(
-                    msg["content"],
-                    width=220
-                )
-
-
-            # -------------------------------------------------
-            # PHOTO
-            # -------------------------------------------------
-
-            elif msg["type"] == "image":
-
-                st.image(
-                    msg["content"],
-                    width=500
-                )
-
-
-# =========================================================
-# PHOTO + GIF PANEL
-# =========================================================
-
-with st.expander(
-    "✨ Photo • Sticker • GIF"
-):
-
-    tab_photo, tab_sticker = st.tabs(
-        [
-            "📷 Upload Photo",
-            "🎭 GIFs & Stickers"
-        ]
+    st.markdown(
+        f"""
+        <div class="{bubble_class}">
+            <div class="aysuu-name">{safe_name}</div>
+            <div>{safe_text}</div>
+            <div class="aysuu-time">{safe_time}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
     )
 
 
-    # =====================================================
-    # PHOTO TAB
-    # =====================================================
+# ==================================================
+# MESSAGE COMPOSER
+# ==================================================
 
-    with tab_photo:
+new_message = st.chat_input(
+    "Write a message...",
+    key="message_composer"
+)
 
-        uploaded = st.file_uploader(
-            "Select Photo",
-            type=[
-                "png",
-                "jpg",
-                "jpeg",
-                "webp"
-            ],
-            key="photo_upload"
-        )
-
-
-        if uploaded:
-
-            st.image(
-                uploaded,
-                width=300
-            )
-
-
-            if st.button(
-                "🚀 Send Photo",
-                use_container_width=True
-            ):
-
-                image_bytes = uploaded.getvalue()
-
-
-                chat_rooms[room_id].append({
-
-                    "user": username,
-
-                    "type": "image",
-
-                    "content": image_bytes,
-
-                    "time": datetime.now().strftime(
-                        "%I:%M %p"
-                    )
-
-                })
-
-
-                # Keep latest 500 messages only
-
-                if len(chat_rooms[room_id]) > 500:
-
-                    chat_rooms[room_id].pop(0)
-
-
-                st.rerun()
-
-
-    # =====================================================
-    # GIF / STICKER TAB
-    # =====================================================
-
-    with tab_sticker:
-
-        cols = st.columns(3)
-
-
-        for index, sticker in enumerate(STICKERS):
-
-            with cols[index % 3]:
-
-                st.image(
-                    sticker["url"],
-                    width=75
-                )
-
-
-                if st.button(
-                    sticker["name"],
-                    key=f"sticker_{index}",
-                    use_container_width=True
-                ):
-
-                    chat_rooms[room_id].append({
-
-                        "user": username,
-
-                        "type": "gif",
-
-                        "content": sticker["url"],
-
-                        "time": datetime.now().strftime(
-                            "%I:%M %p"
-                        )
-
-                    })
-
-
-                    # Keep latest 500 messages
-
-                    if len(chat_rooms[room_id]) > 500:
-
-                        chat_rooms[room_id].pop(0)
-
-
-                    st.rerun()
-
-
-# =========================================================
-# MESSAGE INPUT
-# =========================================================
-
-with st.form(
-    "message_form",
-    clear_on_submit=True
-):
-
-    col1, col2 = st.columns(
-        [8, 2]
+if new_message and new_message.strip():
+    save_message(
+        st.session_state.room,
+        st.session_state.username,
+        new_message.strip()
     )
+    st.rerun()
 
 
-    with col1:
-
-        message = st.text_input(
-            "Message",
-            placeholder="Type your message...",
-            label_visibility="collapsed",
-            max_chars=2000
-        )
-
-
-    with col2:
-
-        send = st.form_submit_button(
-            "🚀 Send",
-            use_container_width=True
-        )
-
-
-    if send and message.strip():
-
-        chat_rooms[room_id].append({
-
-            "user": username,
-
-            "type": "text",
-
-            "content": message.strip(),
-
-            "time": datetime.now().strftime(
-                "%I:%M %p"
-            )
-
-        })
-
-
-        # Keep latest 500 messages
-
-        if len(chat_rooms[room_id]) > 500:
-
-            chat_rooms[room_id].pop(0)
-
-
-        st.rerun()
-
-
-# =========================================================
+# ==================================================
 # FOOTER
-# =========================================================
+# ==================================================
 
-st.divider()
+st.markdown("---")
 
-st.caption(
-    "⚡ ChatSpace Ultra • "
-    "500 Message Limit • "
-    "Automatic Refresh • "
-    "Photos • GIFs • Stickers • No SQL"
+st.markdown(
+    """
+    <div style="text-align:center;color:#64748b;font-size:12px">
+        ⚡ Aysuu Messenger<br>
+        Built with Python & Streamlit
+    </div>
+    """,
+    unsafe_allow_html=True
 )
